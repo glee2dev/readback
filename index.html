@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>readback</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Kalam:wght@400;700&display=swap">
+<style>
+/* Layout: isometric factory floor (three production lines, one QC gate) on top; a 2D inspector below that redlines the answer against its source. Dark-only, matching gyunpyolee.com. */
+:root{
+  color-scheme:dark;
+  --bg:#0D0908; --panel:#141010; --panel2:#1A1514; --ink:#F1ECE8; --muted:#9A8F88; --rule:#2A2422;
+  --ok:#52C48A; --der:#6E9EE8; --bad:#E8635A; --ext:#F2C069; --flame:#FF3B2F;
+  --ok-bg:rgba(82,196,138,.16); --der-bg:rgba(110,158,232,.16); --bad-bg:rgba(232,99,90,.16); --ext-bg:rgba(242,192,105,.14);
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --hand:"Kalam","Segoe Print","Bradley Hand",cursive;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+.svg-mono{font-family:var(--mono)} .svg-sans{font-family:var(--sans)} .svg-hand{font-family:var(--hand)}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:clamp(16px,3vw,36px);padding-block:22px 56px;display:grid;gap:20px}
+header{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:flex-end;justify-content:space-between}
+.brand h1{margin:0;font:600 28px/1.1 var(--mono);letter-spacing:-.02em}
+.brand h1 span{color:var(--flame)}
+.brand p{margin:6px 0 0;color:var(--muted);max-width:62ch;text-wrap:pretty}
+header a{color:var(--muted);font-size:13px;text-decoration:none;border-bottom:1px solid var(--rule)}
+header a:hover{color:var(--ink);border-color:var(--flame)}
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--rule);padding:3px}
+.tabs button{font:500 13px var(--mono);color:var(--muted);background:transparent;border:0;padding:6px 10px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--panel2);color:var(--ink);box-shadow:inset 0 -2px 0 var(--flame)}
+.tabs button:focus-visible,.btn:focus-visible,select:focus-visible,textarea:focus-visible,.claim:focus-visible{outline:2px solid var(--flame);outline-offset:2px}
+select,.btn{font:500 13px var(--mono);background:var(--panel);color:var(--ink);border:1px solid var(--rule);padding:7px 10px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.qtext{color:var(--ink);font-size:15px;max-width:90ch;margin:0;min-width:0}
+.qtext b{font:500 12px var(--mono);color:var(--muted);margin-right:8px}
+
+.floor{position:relative;background:radial-gradient(120% 90% at 50% 0%,#1C1715 0%,var(--panel) 55%,#0F0B0A 100%);border:1px solid var(--rule);overflow:hidden}
+.floor .sc{overflow-x:auto}
+.floor svg{display:block;width:100%;height:auto}
+.floor .hint{position:absolute;left:14px;bottom:10px;font:12px var(--mono);color:var(--muted)}
+.floor .replay{position:absolute;right:12px;bottom:10px}
+.tip{position:absolute;pointer-events:none;background:var(--bg);border:1px solid var(--rule);padding:6px 8px;font:12px var(--mono);max-width:280px;transform:translate(-50%,-115%);white-space:nowrap}
+
+.insp{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:0;border:1px solid var(--rule);background:var(--panel);position:relative}
+.insp-h{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--rule)}
+.strip{display:flex;flex-wrap:wrap;gap:6px 14px;font:13px var(--mono);font-variant-numeric:tabular-nums}
+.strip span b{font-weight:600}
+.k-ok{color:var(--ok)} .k-der{color:var(--der)} .k-bad{color:var(--bad)} .k-ext{color:var(--ext)}
+.answer{padding:16px 18px;min-width:0;border-right:1px solid var(--rule);max-height:520px;overflow:auto;white-space:pre-wrap;font-size:14.5px;line-height:1.7}
+.answer .claim{border-radius:3px;padding:0 .15em;cursor:pointer;font-weight:600}
+.claim.verified{background:var(--ok-bg);color:var(--ok)} .claim.derived{background:var(--der-bg);color:var(--der)} .claim.unverified{background:var(--bad-bg);color:var(--bad)}
+.claim.ignored{color:var(--muted);font-weight:400;background:transparent;cursor:default}
+.claim.sel{outline:1.5px solid currentColor;outline-offset:1px}
+.answer u.ext{text-decoration:none;background:var(--ext-bg);color:var(--ext);border-radius:3px;padding:0 .15em}
+.answer .empty{color:var(--muted);font-style:italic}
+.source{min-width:0;max-height:520px;overflow:auto}
+.source table{width:100%;border-collapse:collapse;font:12.5px var(--mono);font-variant-numeric:tabular-nums}
+.source th{position:sticky;top:0;background:var(--panel2);text-align:left;color:var(--muted);font-weight:500;padding:8px 12px;border-bottom:1px solid var(--rule)}
+.source td{padding:5px 12px;border-bottom:1px solid #1E1817;vertical-align:top}
+.source td.v{text-align:right;white-space:nowrap}
+.source td.p{word-break:break-all;color:#C9C0BA}
+.source tr.hit td{background:var(--ok-bg)} .source tr.hit-der td{background:var(--der-bg)} .source tr.cand td{background:rgba(232,99,90,.08)}
+.source tr.dim td{opacity:.45}
+.wires{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.detail{grid-column:1/-1;border-top:1px solid var(--rule);padding:14px 18px;display:grid;gap:6px}
+.detail .pill{display:inline-block;font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border:1px solid currentColor;margin-right:8px}
+.detail p{margin:0;max-width:95ch}
+.detail .rule{color:var(--muted);font:12.5px var(--mono)}
+.byo{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.byo label{display:grid;gap:6px;font:12px var(--mono);color:var(--muted);min-width:0}
+textarea{width:100%;min-height:150px;resize:vertical;background:var(--panel);color:var(--ink);border:1px solid var(--rule);padding:10px;font:13px/1.5 var(--mono)}
+.foot{color:var(--muted);font-size:12.5px;max-width:110ch;margin:0}
+.foot code{font-family:var(--mono);color:#C9C0BA}
+@media (max-width:820px){
+  .floor svg{min-width:820px}.floor .hint{display:none}.floor .replay{position:static;margin:8px 12px 12px}
+  .insp{grid-template-columns:1fr}.answer{border-right:0;border-bottom:1px solid var(--rule);max-height:none}.source{max-height:340px}
+  .wires{display:none}.byo{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>read<span>back</span></h1>
+      <p>Every number in an AI answer, read back against the source it should have come from. Matched, derived, or no match, with the reason for each.</p>
+    </div>
+    <a href="https://gyunpyolee.com/vehicle-intelligence/" target="_blank" rel="noopener">The experiment behind it →</a>
+  </header>
+
+  <div class="bar">
+    <div class="tabs" role="group" aria-label="Source of answers">
+      <button type="button" id="tab-ex" aria-pressed="true">Examples</button>
+      <button type="button" id="tab-byo" aria-pressed="false">Check your own</button>
+    </div>
+    <select id="qsel" aria-label="Example question"></select>
+    <p class="qtext" id="qtext"></p>
+  </div>
+
+  <section class="byo" id="byo" hidden>
+    <label for="byo-ans">AI ANSWER — paste the text it gave you
+      <textarea id="byo-ans" placeholder="e.g. 577 households had a new child; yearly spend rose from $11,298 to $17,435 (+54.3%)."></textarea></label>
+    <label for="byo-src">SOURCE — the numbers it was given or should match (JSON, or CSV with a label column)
+      <textarea id="byo-src" placeholder='{"n_households": 577, "spend_before_usd": 11298, "spend_after_usd": 17435, "change_pct": 54.3}'></textarea></label>
+    <div class="bar" style="grid-column:1/-1"><button type="button" class="btn" id="byo-run">Read it back</button><span class="foot" id="byo-msg">Runs in your browser. Nothing is uploaded.</span></div>
+  </section>
+
+  <div class="floor" id="floor">
+    <div class="sc"><svg id="iso" viewBox="0 0 1200 520" role="img" aria-label="Three production lines produce numbers that pass a quality gate and are sorted into matched, derived and no-match piles"></svg></div>
+    <div class="tip" id="tip" hidden></div>
+    <span class="hint">Each crate is one number in the answer. Click one to inspect it.</span>
+    <button type="button" class="btn replay" id="replay">Run the lines again</button>
+  </div>
+
+  <section class="insp" id="insp" aria-label="Inspector">
+    <div class="insp-h">
+      <div class="tabs" role="group" aria-label="Line" id="ltabs"></div>
+      <div class="strip" id="strip"></div>
+    </div>
+    <div class="answer" id="answer"></div>
+    <div class="source" id="source"></div>
+    <svg class="wires" id="wires"></svg>
+    <div class="detail" id="detail"></div>
+  </section>
+
+  <p class="foot">Rules: a count must match to within half a unit or 0.5%; a share or a dollar figure to within half a unit at its stated precision or 1.5% (5% for figures rounded to k or m). <b>Derived</b> means the number is not in the source but is one step from figures that are: a difference, 100 minus a share, or one count over another. Anything else is <b>no match</b>. Phrases that import outside knowledge are marked in <span class="k-ext">yellow</span>. Examples: the replayed Claude Sonnet 5 run from the vehicle-intelligence experiment, synthetic data. Parity with the published Python check: 385 of 385 claims.</p>
+</div>
+
+<script type="module">
+import { check } from './src/readback.js';
+
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const LINES = [{ key: 'ungrounded', tag: 'A', name: 'no data', sub: 'schema only' }, { key: 'naive_grounded', tag: 'B', name: 'raw records', sub: 'does the math' }, { key: 'pipeline_grounded', tag: 'C', name: 'pipeline', sub: 'narrates stats' }];
+const COL = { verified: '#52C48A', derived: '#6E9EE8', unverified: '#E8635A' };
+const LBL = { verified: 'matched', derived: 'derived', unverified: 'no match', ignored: 'not counted' };
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let EX = [], cur = { mode: 'ex', q: 0, line: 2, claim: null }, runs = [];
+
+const el = (tag, a = {}, p, txt) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; if (p) p.appendChild(e); return e; };
+const fmt = v => Math.abs(v) >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(+(+v).toFixed(2));
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ── data ── */
+async function load() {
+  try { EX = await (await fetch('./src/examples.json')).json(); } catch (e) { EX = []; }
+  $('qsel').innerHTML = EX.map((q, i) => `<option value="${i}">${q.id}${q.stats.answerable === false ? ' · no answer in the data' : ''}</option>`).join('');
+  const h = (location.hash || '').slice(1).toLowerCase(); const m = h.match(/^q(\d\d)(?:-(a|b|c))?$/);
+  if (m) { const i = EX.findIndex(q => q.id.toLowerCase() === 'q' + m[1]); if (i >= 0) cur.q = i; if (m[2]) cur.line = 'abc'.indexOf(m[2]); }
+  $('qsel').value = cur.q; select(cur.q);
+}
+function runExample(i) {
+  const q = EX[i];
+  return LINES.map(L => {
+    const text = q.modes[L.key] || '';
+    const r = check(text, q.stats, { sampleStats: L.key === 'naive_grounded' ? q.sample : null });
+    return { ...L, text, r };
+  });
+}
+function select(i) {
+  cur.q = i; const q = EX[i];
+  $('qtext').innerHTML = `<b>${q.id}</b>${esc(q.question)}`;
+  runs = runExample(i);
+  buildLines(); renderInspector(); startFloor();
+}
+
+/* ── isometric floor ── */
+const S = 34, C30 = Math.cos(Math.PI / 6), OX = 330, OY = 92;
+const iso = (x, y, z = 0) => [OX + (x - y) * C30 * S, OY + (x + y) * 0.5 * S - z * S];
+const pts = arr => arr.map(p => p.join(',')).join(' ');
+function box(g, x, y, z, w, d, h, top, left, right, stroke = '#0D0908') {
+  const P = (a, b, c) => iso(a, b, c);
+  el('polygon', { points: pts([P(x, y + d, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x, y + d, z + h)]), fill: left, stroke, 'stroke-width': 1 }, g);
+  el('polygon', { points: pts([P(x + w, y, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x + w, y, z + h)]), fill: right, stroke, 'stroke-width': 1 }, g);
+  return el('polygon', { points: pts([P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)]), fill: top, stroke, 'stroke-width': 1 }, g);
+}
+const BELT = [0.6, 9.4], GATE = 6.3, PILE = [10.3, 11.4, 12.5], LY = i => i * 2.8;
+let floorG, crates = [], t0 = 0, raf = 0;
+function buildLines() {
+  const svg = $('iso'); svg.innerHTML = '';
+  const defs = el('defs', {}, svg);
+  const gl = el('radialGradient', { id: 'beam' }, defs); el('stop', { offset: '0', 'stop-color': '#FF3B2F', 'stop-opacity': '.55' }, gl); el('stop', { offset: '1', 'stop-color': '#FF3B2F', 'stop-opacity': '0' }, gl);
+  floorG = el('g', {}, svg);
+  // floor grid
+  const grid = el('g', { opacity: .5 }, floorG);
+  for (let x = -2; x <= 14; x++) el('polyline', { points: pts([iso(x, -1), iso(x, 7.4)]), stroke: '#231C1A', 'stroke-width': 1, fill: 'none' }, grid);
+  for (let y = -1; y <= 7.4; y += 1) el('polyline', { points: pts([iso(-2, y), iso(14, y)]), stroke: '#231C1A', 'stroke-width': 1, fill: 'none' }, grid);
+  crates = [];
+  runs.forEach((L, li) => {
+    const y = LY(li), g = el('g', { class: 'line', 'data-line': li }, floorG);
+    L.g = g;
+    // belt
+    box(g, BELT[0], y + .2, 0, BELT[1] - BELT[0], .8, .18, '#2C2422', '#1D1716', '#241D1B');
+    for (let x = BELT[0] + .3; x < BELT[1]; x += .55) el('polyline', { points: pts([iso(x, y + .2, .18), iso(x, y + 1, .18)]), stroke: '#3A302D', 'stroke-width': 1 }, g);
+    // machine
+    const isC = li === 2;
+    box(g, -0.9, y + .1, 0, 1.4, 1.0, 1.0, isC ? '#2E4A3C' : '#3A2F2C', isC ? '#1E3329' : '#251E1C', isC ? '#27402F' : '#2E2624');
+    const [lx, ly] = iso(BELT[0] + .2, y + 1.05, 0);
+    const lt = el('text', { x: lx - 4, y: ly + 20, class: 'svg-sans', 'font-size': 14 }, g);
+    el('tspan', { fill: '#F1ECE8', 'font-weight': 600 }, lt, `${L.tag} · ${L.name}`); el('tspan', { fill: '#9A8F88', dx: 8, 'font-size': 12 }, lt, L.sub);
+    // piles (bins)
+    PILE.forEach((px, k) => { box(g, px, y + .15, 0, .9, .9, .06, ['#1F3A2D', '#1E2B40', '#3A2120'][k], '#141010', '#181312'); });
+    L.pileN = { verified: 0, derived: 0, unverified: 0 };
+    const [vx, vy] = iso(13.6, y + .55, 0);
+    L.verdict = el('text', { x: vx + 6, y: vy + 4, class: 'svg-mono', 'font-size': 13 }, g, '');
+    L.vk = ['verified', 'derived', 'unverified'].map(s => el('tspan', { fill: COL[s], 'font-weight': 600 }, L.verdict, ''));
+    L.vr = el('tspan', { fill: '#9A8F88' }, L.verdict, '');
+    if (L.r.answerable === false) { const [rx, ry] = iso(-0.6, y, 1.5); L.lamp = el('text', { x: rx, y: ry - 12, 'text-anchor': 'middle', class: 'svg-mono', 'font-size': 11, fill: L.r.refusal ? '#52C48A' : '#E8635A' }, g, L.r.refusal ? 'refused ✓' : 'answered anyway'); }
+    L.crates = el('g', {}, g);
+    // QC gate on top of this line
+    const gg = el('g', {}, g); L.gate = gg;
+    box(gg, GATE, y + .05, 0, .14, .14, 1.35, '#4A3E3A', '#2D2523', '#372D2A');
+    box(gg, GATE, y + 1.01, 0, .14, .14, 1.35, '#4A3E3A', '#2D2523', '#372D2A');
+    box(gg, GATE - .05, y + .05, 1.35, .24, 1.1, .16, '#FF3B2F', '#8C1F18', '#B82A21');
+    L.beam = el('polygon', { points: pts([iso(GATE + .07, y + .2, 1.33), iso(GATE + .07, y + 1.0, 1.33), iso(GATE + .07, y + 1.0, .2), iso(GATE + .07, y + .2, .2)]), fill: 'url(#beam)', opacity: 0 }, gg);
+    // crates for counted claims
+    L.r.claims.filter(c => c.status !== 'ignored').forEach((c, i) => {
+      const cg = el('g', { class: 'crate', tabindex: 0, role: 'button', 'aria-label': `${c.text}: ${LBL[c.status]}`, style: 'cursor:pointer' }, L.crates);
+      const crate = { c, li, i, g: cg, k: ['verified', 'derived', 'unverified'].indexOf(c.status) };
+      cg.addEventListener('click', () => pick(li, c));
+      cg.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(li, c); } });
+      cg.addEventListener('mouseenter', ev => tip(ev, `${c.text} · ${LBL[c.status]}`));
+      cg.addEventListener('mouseleave', () => $('tip').hidden = true);
+      crates.push(crate);
+    });
+  });
+  // gates must sit above crates of the same line: move gate group after crate group
+  runs.forEach(L => L.g.appendChild(L.gate));
+  // fit the view to what was drawn (plus headroom for crates dropping into piles)
+  runs.forEach(L => { L.vk[0].textContent = '00 ✓  00 Δ  00 ✗  '; L.vr.textContent = '100% read back'; });
+  requestAnimationFrame(() => { try { const bb = floorG.getBBox(); svg.setAttribute('viewBox', `${Math.floor(bb.x - 24)} ${Math.floor(bb.y - 40)} ${Math.ceil(bb.width + 48)} ${Math.ceil(bb.height + 70)}`); } catch (e) {} });
+  const n = runs.map(L => L.r.counts.n).reduce((a, b) => Math.max(a, b), 0);
+  if (!n) { const [x, y] = iso(5, 3); el('text', { x, y, 'text-anchor': 'middle', fill: '#9A8F88', class: 'svg-mono', 'font-size': 13 }, floorG, 'no numeric claims in these answers'); }
+}
+function tip(ev, s) { const t = $('tip'); const r = $('floor').getBoundingClientRect(); t.textContent = s; t.style.left = (ev.clientX - r.left) + 'px'; t.style.top = (ev.clientY - r.top) + 'px'; t.hidden = false; }
+
+const SPAWN = 0.32, SPEED = 2.6, SCAN = 0.22;
+function crateState(cr, t) {
+  const L = runs[cr.li], y = LY(cr.li) + .42, start = cr.i * SPAWN + cr.li * 0.12;
+  const tGate = start + (GATE - BELT[0]) / SPEED, tEnd = tGate + SCAN + (BELT[1] - GATE) / SPEED;
+  if (t < start) return null;
+  let x, colored = t >= tGate + SCAN * .5, z = .18;
+  if (t < tGate) x = BELT[0] + (t - start) * SPEED;
+  else if (t < tGate + SCAN) x = GATE - .2;
+  else if (t < tEnd) x = GATE - .2 + (t - tGate - SCAN) * SPEED;
+  else { // drop into pile
+    const order = L.r.claims.filter(c => c.status === cr.c.status).indexOf(cr.c);
+    const col = order % 2, row = Math.floor(order / 2) % 2, lev = Math.floor(order / 4);
+    const p = Math.min(1, (t - tEnd) / .35);
+    const tx = PILE[cr.k] + .08 + col * .4, ty = y - .27 + row * .4, tz = .06 + lev * .32;
+    x = BELT[1] + (tx - BELT[1]) * p; const yy = y + (ty - y) * p; z = .18 + (tz - .18) * p + Math.sin(p * Math.PI) * .5;
+    return { x, y: yy, z, colored: true, scan: false, done: p >= 1 };
+  }
+  return { x, y, z, colored, scan: t >= tGate && t < tGate + SCAN, done: false };
+}
+function drawFrame(t) {
+  runs.forEach(L => { L.pileN = { verified: 0, derived: 0, unverified: 0 }; L.beam.setAttribute('opacity', 0); });
+  const list = [];
+  for (const cr of crates) {
+    const s = crateState(cr, t);
+    cr.g.innerHTML = ''; cr.g.style.display = s ? '' : 'none'; if (!s) continue;
+    const L = runs[cr.li]; if (s.scan) L.beam.setAttribute('opacity', .9);
+    if (s.done) L.pileN[cr.c.status]++;
+    const col = s.colored ? COL[cr.c.status] : '#D9D0C8';
+    const sh = (hex, k) => { const n = parseInt(hex.slice(1), 16); const f = v => Math.round(v * k); return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`; };
+    box(cr.g, s.x, s.y, s.z, .34, .34, .3, col, sh(col, .62), sh(col, .8));
+    if (cur.claim === cr.c && cur.line === cr.li) { const [hx, hy] = iso(s.x + .17, s.y + .17, s.z + .3); el('circle', { cx: hx, cy: hy - 10, r: 4, fill: '#FF3B2F' }, cr.g); }
+    list.push([s.x + s.y + s.z * .01, cr]);
+  }
+  // depth sort within each line
+  runs.forEach((L, li) => list.filter(([, c]) => c.li === li).sort((a, b) => a[0] - b[0]).forEach(([, c]) => L.crates.appendChild(c.g)));
+  runs.forEach(L => {
+    const n = L.r.counts.n;
+    ['verified', 'derived', 'unverified'].forEach((s, k) => L.vk[k].textContent = n ? `${L.pileN[s]} ${['✓', 'Δ', '✗'][k]}  ` : '');
+    const done = L.pileN.verified + L.pileN.derived + L.pileN.unverified;
+    L.vr.textContent = n ? (done === n ? `${Math.round((L.r.counts.verified + L.r.counts.derived) / n * 100)}% read back` : '') : (L.text.trim() ? 'no numbers' : 'empty answer');
+  });
+}
+function endTime() { return Math.max(0, ...crates.map(cr => cr.i * SPAWN + cr.li * .12 + (BELT[1] - BELT[0]) / SPEED + SCAN + .5)) + .2; }
+function startFloor() {
+  cancelAnimationFrame(raf); const T = endTime();
+  if (reduce) { drawFrame(T); return; }
+  t0 = performance.now();
+  const step = now => { const t = (now - t0) / 1000; drawFrame(t); if (t < T) raf = requestAnimationFrame(step); };
+  raf = requestAnimationFrame(step);
+}
+$('replay').addEventListener('click', startFloor);
+
+/* ── inspector ── */
+function renderInspector() {
+  const L = runs[cur.line] || runs[0]; if (!L) return;
+  $('ltabs').innerHTML = runs.map((x, i) => `<button type="button" aria-pressed="${i === cur.line}" data-i="${i}">${x.tag} · ${x.name}</button>`).join('');
+  $('ltabs').querySelectorAll('button').forEach(b => b.onclick = () => { cur.line = +b.dataset.i; cur.claim = null; renderInspector(); });
+  const k = L.r.counts;
+  $('strip').innerHTML = k.n ? `<span>${k.n} numbers</span><span class="k-ok"><b>${k.verified}</b> matched</span><span class="k-der"><b>${k.derived}</b> derived</span><span class="k-bad"><b>${k.unverified}</b> no match</span>${L.r.external.length ? `<span class="k-ext"><b>${L.r.external.length}</b> outside knowledge</span>` : ''}${L.r.answerable === false ? `<span class="${L.r.refusal ? 'k-ok' : 'k-bad'}">${L.r.refusal ? 'refused: the data cannot answer this' : 'did not refuse an unanswerable question'}</span>` : ''}` : `<span>${L.text.trim() ? 'no numeric claims' : 'empty answer'}</span>`;
+  // answer with marks
+  const text = L.text; let html = '', pos = 0;
+  const marks = [...L.r.claims.map(c => ({ s: c.start, e: c.end, c })), ...L.r.external.map(x => ({ s: x.start, e: x.end, x }))].sort((a, b) => a.s - b.s);
+  for (const m of marks) { if (m.s < pos) continue; html += esc(text.slice(pos, m.s));
+    const seg = esc(text.slice(m.s, m.e));
+    if (m.c) html += `<span class="claim ${m.c.status}" tabindex="${m.c.status === 'ignored' ? -1 : 0}" data-s="${m.c.start}">${seg}</span>`; else html += `<u class="ext" title="imports outside knowledge">${seg}</u>`;
+    pos = m.e; }
+  html += esc(text.slice(pos));
+  $('answer').innerHTML = text.trim() ? html : '<span class="empty">The model returned nothing for this question (it ran out of budget while computing).</span>';
+  $('answer').querySelectorAll('.claim:not(.ignored)').forEach(sp => {
+    const c = L.r.claims.find(x => x.start === +sp.dataset.s);
+    sp.onclick = () => pick(cur.line, c, true); sp.onkeydown = e => { if (e.key === 'Enter') pick(cur.line, c, true); };
+  });
+  // source table
+  const rows = L.r.truth;
+  $('source').innerHTML = `<table><thead><tr><th>source figure</th><th style="text-align:right">value</th></tr></thead><tbody>${rows.map((t, i) => `<tr data-p="${esc(t.path)}"><td class="p">${esc(t.path)}</td><td class="v">${fmt(t.value)}${t.kind === 'pct' ? '%' : ''}${t.kind === 'usd' ? ' $' : ''}</td></tr>`).join('')}</tbody></table>`;
+  if (!cur.claim || !L.r.claims.includes(cur.claim)) cur.claim = L.r.claims.find(c => c.status === 'unverified') || L.r.claims.find(c => c.status !== 'ignored') || null;
+  showClaim();
+}
+function pick(li, c, fromText) {
+  if (!c) return; cur.line = li; cur.claim = c;
+  if (!fromText) { renderInspector(); $('insp').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); } else showClaim();
+  if (reduce) drawFrame(endTime());
+}
+function showClaim() {
+  const L = runs[cur.line], c = cur.claim;
+  $('answer').querySelectorAll('.claim').forEach(sp => sp.classList.toggle('sel', c && +sp.dataset.s === c.start));
+  const trs = [...$('source').querySelectorAll('tr[data-p]')];
+  trs.forEach(tr => tr.className = '');
+  const W = $('wires'); W.innerHTML = '';
+  if (!c) { $('detail').innerHTML = '<p class="rule">Pick a marked number in the answer.</p>'; return; }
+  const ins = c.inputs || [], cands = (c.candidates || []).map(k => k.path);
+  trs.forEach(tr => { const p = tr.dataset.p; if (ins.includes(p)) tr.className = c.status === 'derived' ? 'hit-der' : 'hit'; else if (cands.includes(p)) tr.className = 'cand'; });
+  const first = trs.find(tr => ins.includes(tr.dataset.p) || cands.includes(tr.dataset.p));
+  if (first) { const box = $('source'); box.scrollTop = Math.max(0, first.offsetTop - 60); }
+  const sp = $('answer').querySelector(`.claim[data-s="${c.start}"]`);
+  if (sp) { const a = $('answer'); const top = sp.offsetTop - a.offsetTop; if (top < a.scrollTop || top > a.scrollTop + a.clientHeight - 30) a.scrollTop = top - 80; }
+  const col = { verified: '#52C48A', derived: '#6E9EE8', unverified: '#E8635A', ignored: '#9A8F88' }[c.status];
+  $('detail').innerHTML = `<p><span class="pill" style="color:${col}">${LBL[c.status]}</span><b>${esc(c.text)}</b> <span class="rule">(${c.kind === 'usd' ? 'money' : c.kind === 'pct' || c.kind === 'pts' ? 'share' : 'count'})</span></p><p>${esc(c.why || '')}</p>${c.formula ? `<p class="rule">arithmetic: ${esc(c.formula)}</p>` : ''}`;
+  requestAnimationFrame(() => drawWires(sp, trs.filter(tr => ins.includes(tr.dataset.p) || cands.includes(tr.dataset.p)), c, col));
+}
+/* hand-drawn wires: a designer's redline from the number to the figure it was read against */
+function rough(x1, y1, x2, y2, seed) {
+  let s = seed; const R = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+  const mx = (x1 + x2) / 2 + (R() - .5) * 24, my = (y1 + y2) / 2 + (R() - .5) * 24;
+  return `M${x1} ${y1} C${x1 + 60} ${y1 + (R() - .5) * 20}, ${mx} ${my}, ${(mx + x2) / 2} ${(my + y2) / 2} S${x2 - 30} ${y2 + (R() - .5) * 8}, ${x2} ${y2}`;
+}
+function ring(cx, cy, rx, ry, seed) {
+  let s = seed; const R = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+  let d = ''; const n = 30, a0 = -2.3;
+  for (let i = 0; i <= n; i++) { const a = a0 + (Math.PI * 2 + .5) * i / n, g = 1 + (R() - .5) * .06 + i / n * .05; d += (i ? 'L' : 'M') + (cx + Math.cos(a) * rx * g).toFixed(1) + ' ' + (cy + Math.sin(a) * ry * g).toFixed(1); }
+  return d;
+}
+function drawWires(sp, rows, c, col) {
+  const W = $('wires'); W.innerHTML = '';
+  if (!sp || getComputedStyle(W).display === 'none') return;
+  const base = $('insp').getBoundingClientRect(), a = sp.getBoundingClientRect(), ans = $('answer').getBoundingClientRect(), src = $('source').getBoundingClientRect();
+  if (a.bottom < ans.top || a.top > ans.bottom) return;
+  const x1 = a.right - base.left + 4, y1 = a.top + a.height / 2 - base.top;
+  el('path', { d: ring(a.left + a.width / 2 - base.left, y1, a.width / 2 + 9, a.height / 2 + 5, c.start + 7), fill: 'none', stroke: col, 'stroke-width': 2.2, 'stroke-linecap': 'round' }, W);
+  rows.forEach((tr, i) => {
+    const r = tr.getBoundingClientRect(); if (r.bottom < src.top || r.top > src.bottom) return;
+    const x2 = r.left - base.left + 6, y2 = r.top + r.height / 2 - base.top;
+    const cand = c.status === 'unverified';
+    el('path', { d: rough(x1, y1, x2, y2, c.start + i * 13 + 3), fill: 'none', stroke: col, 'stroke-width': cand ? 1.6 : 2.2, 'stroke-dasharray': cand ? '6 6' : 'none', 'stroke-linecap': 'round', opacity: .95 }, W);
+    el('circle', { cx: x2, cy: y2, r: 3.5, fill: col }, W);
+    if (cand) { const k = c.candidates.find(k => k.path === tr.dataset.p); if (k) el('text', { x: x2 - 8, y: y2 - 8, 'text-anchor': 'end', fill: col, class: 'svg-hand', 'font-size': 15 }, W, k.reason); }
+  });
+}
+['scroll'].forEach(ev => { $('answer').addEventListener(ev, () => showClaim(), { passive: true }); $('source').addEventListener(ev, () => { const L = runs[cur.line]; const c = cur.claim; if (!c) return; const sp = $('answer').querySelector(`.claim[data-s="${c.start}"]`); const ins = c.inputs || [], cands = (c.candidates || []).map(k => k.path); const col = { verified: '#52C48A', derived: '#6E9EE8', unverified: '#E8635A' }[c.status] || '#9A8F88'; drawWires(sp, [...$('source').querySelectorAll('tr[data-p]')].filter(tr => ins.includes(tr.dataset.p) || cands.includes(tr.dataset.p)), c, col); }, { passive: true }); });
+addEventListener('resize', () => showClaim());
+
+/* ── modes ── */
+$('qsel').onchange = e => { cur.claim = null; select(+e.target.value); };
+function setMode(m) {
+  cur.mode = m; $('tab-ex').setAttribute('aria-pressed', m === 'ex'); $('tab-byo').setAttribute('aria-pressed', m === 'byo');
+  $('byo').hidden = m !== 'byo'; $('qsel').hidden = m !== 'ex'; $('qtext').hidden = m !== 'ex';
+  if (m === 'ex') select(cur.q);
+}
+$('tab-ex').onclick = () => setMode('ex'); $('tab-byo').onclick = () => setMode('byo');
+$('byo-run').onclick = () => {
+  const text = $('byo-ans').value, srcText = $('byo-src').value;
+  let r; try { r = check(text, srcText); } catch (e) { $('byo-msg').textContent = 'Could not read the source: ' + e.message + '. Use JSON, or CSV with a header row.'; return; }
+  $('byo-msg').textContent = r.truth.length ? `Read ${r.truth.length} source figures. Runs in your browser. Nothing is uploaded.` : 'No numbers found in the source.';
+  runs = [{ key: 'yours', tag: '✎', name: 'your answer', sub: 'pasted text', text, r }];
+  cur.line = 0; cur.claim = null; buildLines(); renderInspector(); startFloor();
+};
+load();
+</script>
+</body>
+</html>

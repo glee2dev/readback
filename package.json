@@ -1,0 +1,13 @@
+{
+  "name": "readback",
+  "version": "0.1.0",
+  "description": "Read every number in an AI answer back against its source: matched, derived, or no match, with the reason for each.",
+  "type": "module",
+  "main": "src/readback.js",
+  "scripts": {
+    "test": "node --test test/check.test.mjs",
+    "parity": "node test/parity.mjs ../vehicle-intelligence/site/replay.json /tmp/readback-js.json && python3 test/parity_py.py ../vehicle-intelligence/eval ../vehicle-intelligence/site/replay.json /tmp/readback-py.json && node test/compare.mjs /tmp/readback-js.json /tmp/readback-py.json",
+    "serve": "python3 -m http.server 8000"
+  },
+  "license": "MIT"
+}
