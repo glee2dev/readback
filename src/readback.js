@@ -162,6 +162,13 @@ const lastKey = p => p.slice(p.lastIndexOf('.') + 1);
 const GROUP_RE = /^((?:sample\.)?(?:answerable_part\.)?(?:groups\.[^.[]+))/;
 const group = p => { const m = p.match(GROUP_RE); return m ? m[1] : (p.startsWith('sample') ? 'sample' : 'population'); };
 const tree = p => p.startsWith('sample') ? 'sample' : 'population';
+/* a gauge: where the claim sits relative to the figure it was read against, and the tolerance band */
+export function gauge(c, nominal) {
+  if (nominal == null || !Number.isFinite(nominal)) return null;
+  const { tol, rule } = tolerance(c.value, c.text, nominal, c.kind);
+  const base = Math.abs(nominal) || 1;
+  return { nominal, value: c.value, tol, rule, devPct: (c.value - nominal) / base * 100, tolPct: tol / base * 100 };
+}
 const fmt = v => Math.abs(v) >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(+v.toFixed(2));
 
 export function matchClaims(claims, truth) {
@@ -171,7 +178,7 @@ export function matchClaims(claims, truth) {
     for (const t of truth) if (compatible(c.kind, t.kind) && close(c.value, c.text, t.value, c.kind))
       if (!best || Math.abs(c.value - t.value) < Math.abs(c.value - best.value)) best = t;
     if (best) {
-      Object.assign(c, { status: 'verified', matchedPath: best.path, matchedValue: best.value, inputs: [best.path],
+      Object.assign(c, { status: 'verified', matchedPath: best.path, matchedValue: best.value, inputs: [best.path], gauge: gauge(c, best.value),
         why: `${c.text} matches ${best.path} = ${fmt(best.value)} (${tolerance(c.value, c.text, best.value, c.kind).rule})` });
       continue;
     }
@@ -204,11 +211,14 @@ export function matchClaims(claims, truth) {
         if (close(c.value, c.text, v, 'pct')) { found = { path: `${a.path} / ${b.path} * 100`, value: v, inputs: [a.path, b.path], formula: `${fmt(a.value)} ÷ ${fmt(b.value)} × 100 = ${fmt(v)}` }; break outer2; }
       }
     }
-    if (found) Object.assign(c, { status: 'derived', matchedPath: found.path, matchedValue: Math.round(found.value * 100) / 100, inputs: found.inputs, formula: found.formula,
+    if (found) Object.assign(c, { status: 'derived', matchedPath: found.path, matchedValue: Math.round(found.value * 100) / 100, inputs: found.inputs, formula: found.formula, gauge: gauge(c, found.value),
       why: `${c.text} is not stated in the source, but ${found.formula} from figures that are` });
     else {
       c.status = 'unverified';
       c.candidates = nearest(c, truth);
+      const fam = k => k === 'pct' || k === 'pts' ? 'share' : k === 'usd' ? 'usd' : 'n'; // gauge only against the same kind of figure
+      const near = c.candidates.find(k => fam(c.kind) === fam(k.kind));
+      c.gauge = near ? { ...gauge(c, near.value), against: near.path } : null;
       c.why = c.candidates.length ? `No source figure within tolerance. Closest: ${c.candidates.map(k => `${k.path} = ${fmt(k.value)} (${k.reason})`).join('; ')}`
         : 'No source figure of a compatible kind';
     }
@@ -219,7 +229,7 @@ function nearest(c, truth) {
   return truth.map(t => {
     const rel = Math.abs(c.value - t.value) / Math.max(Math.abs(t.value), 1e-9);
     const reason = !compatible(c.kind, t.kind) ? `wrong kind: ${c.kind} vs ${t.kind}` : `off by ${(rel * 100).toFixed(1)}%`;
-    return { path: t.path, value: t.value, rel: compatible(c.kind, t.kind) ? rel : rel + 10, reason };
+    return { path: t.path, value: t.value, kind: t.kind, rel: compatible(c.kind, t.kind) ? rel : rel + 10, reason };
   }).sort((a, b) => a.rel - b.rel).slice(0, 3).map(({ rel, ...k }) => k);
 }
 
@@ -273,7 +283,7 @@ export function check(text, source, opts = {}) {
     const key = ({ pts: 'pct', plain: 'count' }[c.kind] || c.kind) + '|' + c.value;
     if (first.has(key)) {
       const f = first.get(key);
-      if (f.status === 'unverified' && c.status !== 'unverified') Object.assign(f, { status: c.status, matchedPath: c.matchedPath, matchedValue: c.matchedValue, inputs: c.inputs, formula: c.formula, why: c.why, candidates: undefined });
+      if (f.status === 'unverified' && c.status !== 'unverified') Object.assign(f, { status: c.status, matchedPath: c.matchedPath, matchedValue: c.matchedValue, inputs: c.inputs, formula: c.formula, why: c.why, gauge: c.gauge, candidates: undefined });
       c.repeatOf = f.start; c.status = 'ignored'; c.why = 'repeat of an earlier mention';
     } else first.set(key, c);
   }
